@@ -2,9 +2,13 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs";
-import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
 import open from "open";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const GENERATED_DIR = path.join(__dirname, ".generated");
 
 // 1. Create the MCP Server
 const server = new Server(
@@ -68,12 +72,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       </html>
     `;
 
-    // 5. Save the HTML to your Mac's temporary folder and open it
-    const tempFilePath = path.join(os.tmpdir(), `diagram-${Date.now()}.html`);
-    fs.writeFileSync(tempFilePath, htmlTemplate);
+    // Keep generated viewer files inside the repo instead of the system temp folder.
+    fs.mkdirSync(GENERATED_DIR, { recursive: true });
+    const htmlFilePath = path.join(GENERATED_DIR, `diagram-${Date.now()}.html`);
+    fs.writeFileSync(htmlFilePath, htmlTemplate);
     
     // Open the HTML file in your Mac's default browser
-    await open(`file://${tempFilePath}`);
+    await open(`file://${htmlFilePath}`);
 
     // Tell Claude it was successful
     return {
