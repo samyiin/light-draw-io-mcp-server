@@ -57,9 +57,9 @@ or:
 Create a flowchart for a user login process using draw.io.
 ```
 
-## MCP Tool
+## MCP Tools
 
-This server exposes one tool:
+This server exposes two tools:
 
 ### `draw_diagram`
 
@@ -73,6 +73,11 @@ Example input:
   "xml": "<mxfile>...</mxfile>"
 }
 ```
+
+### `read_diagram`
+
+- Input: none
+- Behavior: returns the draw.io XML currently on the canvas, including any edits you've made in the browser
 
 ## Troubleshooting
 
@@ -90,10 +95,9 @@ You can edit diagrams directly in the browser — drag lines, add boxes, rearran
 
 ## Limitations
 
-- **AI cannot read the canvas.** The AI can push new diagrams to the viewer, but it has no way to read what is currently displayed. This means the AI always works from its own XML, not from your latest edits. (This could be added later.)
 - **Each AI-generated diagram overwrites the viewer.** If the AI generates a new diagram, it replaces whatever is currently rendered in the browser. If you have unsaved local edits, save them first — nothing is persisted until you click save.
-- **Closing the tab loses the diagram.** The diagram is pushed to the browser over WebSocket and only lives in memory. If you close the tab and reopen `http://localhost:3000/viewer`, the canvas will be empty — even if you previously saved. Saving writes a `.drawio` file to `generated/`, but the viewer does not reload from that file on startup.
 - **Only one instance per machine.** The HTTP/WebSocket server is hardcoded to port `3000`, so you can only run one copy of the MCP server at a time. The MCP protocol itself uses stdio (one process per Claude session), so if the port were configurable, multiple Claude sessions could each run their own independent instance.
+TODO: Multitab connect to one instance?
 
 ## Notes
 

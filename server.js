@@ -12,6 +12,7 @@ import open from "open";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const GENERATED_DIR = path.join(__dirname, "generated");
+const CURRENT_FILE = path.join(GENERATED_DIR, "~current.drawio");
 const HTTP_PORT = 3000;
 
 // ── HTTP + WebSocket server ────────────────────────────────────────────
@@ -32,6 +33,24 @@ app.post("/save", (req, res) => {
   const filePath = path.join(GENERATED_DIR, `${safeName}.drawio`);
   fs.writeFileSync(filePath, xml);
   res.json({ ok: true, path: filePath });
+});
+
+app.post("/autosave", (req, res) => {
+  const { xml } = req.body;
+  if (!xml) return res.status(400).json({ error: "Missing xml" });
+
+  fs.mkdirSync(GENERATED_DIR, { recursive: true });
+  fs.writeFileSync(CURRENT_FILE, xml);
+  res.json({ ok: true });
+});
+
+app.get("/current", (_req, res) => {
+  if (fs.existsSync(CURRENT_FILE)) {
+    const xml = fs.readFileSync(CURRENT_FILE, "utf-8");
+    res.json({ xml });
+  } else {
+    res.status(404).json({ error: "No current diagram" });
+  }
 });
 
 const httpServer = createServer(app);
@@ -77,6 +96,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ["xml"]
         }
+      },
+      {
+        name: "read_diagram",
+        description: "Returns the draw.io XML currently displayed on the canvas.",
+        inputSchema: {
+          type: "object",
+          properties: {}
+        }
       }
     ]
   };
@@ -86,10 +113,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === "draw_diagram") {
     const xmlContent = request.params.arguments.xml;
 
-    // Always save the raw XML as a backup
     fs.mkdirSync(GENERATED_DIR, { recursive: true });
     const drawioFilePath = path.join(GENERATED_DIR, "diagram.drawio");
     fs.writeFileSync(drawioFilePath, xmlContent);
+    fs.writeFileSync(CURRENT_FILE, xmlContent);
 
     if (activeSocket && activeSocket.readyState === activeSocket.OPEN) {
       // Browser already open — push new XML over WebSocket
@@ -107,6 +134,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }]
     };
   }
+  if (request.params.name === "read_diagram") {
+    if (fs.existsSync(CURRENT_FILE)) {
+      const xml = fs.readFileSync(CURRENT_FILE, "utf-8");
+      return { content: [{ type: "text", text: xml }] };
+    }
+    return { content: [{ type: "text", text: "No diagram on canvas." }] };
+  }
+
   throw new Error("Tool not found");
 });
 

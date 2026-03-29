@@ -61,7 +61,8 @@
     function sendXmlToDrawio(xml) {
       iframe.contentWindow.postMessage(JSON.stringify({
         action: 'load',
-        xml: xml
+        xml: xml,
+        autosave: 1
       }), '*');
     }
 
@@ -76,6 +77,11 @@
         if (pendingXml) {
           sendXmlToDrawio(pendingXml);
           pendingXml = null;
+        } else {
+          fetch('/current')
+            .then(r => { if (r.ok) return r.json(); throw new Error('none'); })
+            .then(res => sendXmlToDrawio(res.xml))
+            .catch(() => {});
         }
       }
 
@@ -99,6 +105,14 @@
           }), '*');
         })
         .catch(err => console.error('[viewer] Save failed:', err));
+      }
+
+      if (msg.event === 'autosave') {
+        fetch('/autosave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ xml: msg.xml })
+        }).catch(err => console.error('[viewer] Autosave failed:', err));
       }
 
       if (msg.event === 'export') {
