@@ -1,6 +1,6 @@
 # light-draw-io-mcp-server
 
-This is an MCP server that lets Claude draw diagrams with draw.io.
+This is an MCP server that lets Claude draw diagrams with draw.io. 100% runs locally so no problem with data privacy.
 
 It works by connecting Claude to a local Node.js MCP server, which then opens a browser page backed by a local draw.io engine running in Docker.
 
