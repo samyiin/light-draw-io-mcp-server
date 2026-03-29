@@ -21,6 +21,7 @@ It works by connecting Claude to a local Node.js MCP server, which then opens a 
 Install dependencies:
 
 ```bash
+cd ~/light-draw-io-mcp-server
 npm install
 ```
 
@@ -29,6 +30,7 @@ npm install
 ### 1. Start the draw.io server (js file server)
 
 ```bash
+open -a Docker
 docker run -d -p 8080:8080 jgraph/drawio
 ```
 
@@ -37,7 +39,7 @@ This starts draw.io locally on port `8080`.
 ### 2. Add this MCP server to Claude
 
 ```bash
-claude mcp add drawio -- node <your_project_dir>/light-draw-io-mcp-server/server.js
+claude mcp add drawio -- node ~/light-draw-io-mcp-server/server.js
 ```
 
 If your repo is in a different location, replace the path with your actual local path.
