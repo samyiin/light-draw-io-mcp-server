@@ -1,6 +1,9 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import express from "express";
+import { createServer } from "http";
+import { WebSocketServer } from "ws";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -8,15 +11,59 @@ import open from "open";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const GENERATED_DIR = path.join(__dirname, ".generated");
+const GENERATED_DIR = path.join(__dirname, "generated");
+const HTTP_PORT = 3000;
 
-// 1. Create the MCP Server
+// ── HTTP + WebSocket server ────────────────────────────────────────────
+
+const app = express();
+app.use(express.json({ limit: "10mb" }));
+
+app.get("/viewer", (_req, res) => {
+  res.sendFile(path.join(__dirname, "viewer.html"));
+});
+
+app.post("/save", (req, res) => {
+  const { xml, filename } = req.body;
+  if (!xml) return res.status(400).json({ error: "Missing xml" });
+
+  const safeName = (filename || "diagram").replace(/[^a-zA-Z0-9_\-]/g, "_");
+  fs.mkdirSync(GENERATED_DIR, { recursive: true });
+  const filePath = path.join(GENERATED_DIR, `${safeName}.drawio`);
+  fs.writeFileSync(filePath, xml);
+  res.json({ ok: true, path: filePath });
+});
+
+const httpServer = createServer(app);
+const wss = new WebSocketServer({ server: httpServer });
+
+let activeSocket = null;
+let pendingXml = null;
+
+wss.on("connection", (ws) => {
+  activeSocket = ws;
+
+  if (pendingXml) {
+    ws.send(JSON.stringify({ action: "load", xml: pendingXml }));
+    pendingXml = null;
+  }
+
+  ws.on("close", () => {
+    if (activeSocket === ws) activeSocket = null;
+  });
+});
+
+httpServer.listen(HTTP_PORT, () => {
+  console.error(`HTTP/WS server listening on http://localhost:${HTTP_PORT}`);
+});
+
+// ── MCP Server (stdio) ────────────────────────────────────────────────
+
 const server = new Server(
   { name: "my-private-drawio", version: "1.0.0" },
   { capabilities: { tools: {} } }
 );
 
-// 2. Tell Claude what this tool does
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -35,60 +82,34 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// 3. Handle the request when Claude actually calls the tool
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === "draw_diagram") {
     const xmlContent = request.params.arguments.xml;
-    
-    // The Docker canvas URL you are hosting locally
-    const DRAWIO_URL = "http://localhost:8080/?embed=1&ui=min&spin=1&proto=json";
 
-    // 4. Create a temporary HTML file that acts as the viewer
-    // This HTML loads your Docker container in an iframe and uses postMessage to send the XML
-    const htmlTemplate = `
-      <!DOCTYPE html>
-      <html>
-      <body style="margin:0; overflow:hidden;">
-        <iframe id="drawio-frame" src="${DRAWIO_URL}" style="width:100vw; height:100vh; border:none;"></iframe>
-        <script>
-          const iframe = document.getElementById('drawio-frame');
-          const rawXml = \`${xmlContent}\`; // Injecting Claude's XML here
-
-          // Listen for the Docker canvas to say "I'm ready!"
-          window.addEventListener('message', function(e) {
-            if (e.data.length > 0) {
-              const msg = JSON.parse(e.data);
-              if (msg.event === 'init') {
-                // The canvas is ready, send the XML via postMessage!
-                iframe.contentWindow.postMessage(JSON.stringify({
-                  action: 'load',
-                  xml: rawXml
-                }), '*');
-              }
-            }
-          });
-        </script>
-      </body>
-      </html>
-    `;
-
-    // Keep generated viewer files inside the repo instead of the system temp folder.
+    // Always save the raw XML as a backup
     fs.mkdirSync(GENERATED_DIR, { recursive: true });
-    const htmlFilePath = path.join(GENERATED_DIR, `diagram-${Date.now()}.html`);
-    fs.writeFileSync(htmlFilePath, htmlTemplate);
-    
-    // Open the HTML file in your Mac's default browser
-    await open(`file://${htmlFilePath}`);
+    const drawioFilePath = path.join(GENERATED_DIR, "diagram.drawio");
+    fs.writeFileSync(drawioFilePath, xmlContent);
 
-    // Tell Claude it was successful
+    if (activeSocket && activeSocket.readyState === activeSocket.OPEN) {
+      // Browser already open — push new XML over WebSocket
+      activeSocket.send(JSON.stringify({ action: "load", xml: xmlContent }));
+    } else {
+      // No browser connected yet — store XML and open the viewer
+      pendingXml = xmlContent;
+      await open(`http://localhost:${HTTP_PORT}/viewer`);
+    }
+
     return {
-      content: [{ type: "text", text: "Diagram successfully opened in the user's browser!" }]
+      content: [{
+        type: "text",
+        text: `Diagram opened in browser (http://localhost:${HTTP_PORT}/viewer) and saved to ${drawioFilePath}`
+      }]
     };
   }
   throw new Error("Tool not found");
 });
 
-// 6. Start listening to Claude via terminal standard input/output (stdio)
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error("My Private Draw.io MCP Server is running!");

@@ -26,7 +26,7 @@ npm install
 
 ## Quick Start
 
-### 1. Start the draw.io engine
+### 1. Start the draw.io server (js file server)
 
 ```bash
 docker run -d -p 8080:8080 jgraph/drawio
@@ -41,6 +41,7 @@ claude mcp add drawio -- node <your_project_dir>/light-draw-io-mcp-server/server
 ```
 
 If your repo is in a different location, replace the path with your actual local path.
+
 
 ### 3. Use it from Claude
 
@@ -63,7 +64,7 @@ This server exposes one tool:
 ### `draw_diagram`
 
 - Input: raw draw.io XML
-- Behavior: opens the rendered diagram in your default browser
+- Behavior: opens the rendered diagram in your default browser and saves the raw XML as a `.drawio` file
 
 Example input:
 
@@ -73,8 +74,31 @@ Example input:
 }
 ```
 
+## Troubleshooting
+
+If you see `Error: listen EADDRINUSE: address already in use :::3000` when starting the server, a leftover Node process is still holding the port. Find and kill it:
+
+```bash
+lsof -ti :3000 | xargs kill
+```
+
+Then restart with `node server.js`.
+
+## Utility
+
+You can edit diagrams directly in the browser — drag lines, add boxes, rearrange shapes, etc. When you're happy with your changes, click save. You can also change the filename in the toolbar before saving to keep multiple versions.
+
+## Limitations
+
+- **AI cannot read the canvas.** The AI can push new diagrams to the viewer, but it has no way to read what is currently displayed. This means the AI always works from its own XML, not from your latest edits. (This could be added later.)
+- **Each AI-generated diagram overwrites the viewer.** If the AI generates a new diagram, it replaces whatever is currently rendered in the browser. If you have unsaved local edits, save them first — nothing is persisted until you click save.
+- **Closing the tab loses the diagram.** The diagram is pushed to the browser over WebSocket and only lives in memory. If you close the tab and reopen `http://localhost:3000/viewer`, the canvas will be empty — even if you previously saved. Saving writes a `.drawio` file to `generated/`, but the viewer does not reload from that file on startup.
+- **Only one instance per machine.** The HTTP/WebSocket server is hardcoded to port `3000`, so you can only run one copy of the MCP server at a time. The MCP protocol itself uses stdio (one process per Claude session), so if the port were configurable, multiple Claude sessions could each run their own independent instance.
+
 ## Notes
 
 - The server expects the draw.io engine to be available at `http://localhost:8080`.
-- The browser view is created as an HTML file inside `.generated/` in this repo.
+- The server also runs an HTTP/WebSocket server on port `3000` for live diagram updates and saving.
+- The browser view is served at `http://localhost:3000/viewer`.
+- Diagrams are saved inside `generated/` as `.drawio` files, which you can open later in the draw.io desktop app.
 - The server communicates over stdio, which is why it works with `claude mcp add ... -- node server.js`.

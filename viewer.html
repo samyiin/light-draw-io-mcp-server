@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Draw.io Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+    #toolbar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 12px; background: #f5f5f5; border-bottom: 1px solid #ddd;
+      font-family: system-ui, sans-serif; font-size: 13px; flex-shrink: 0;
+    }
+    #toolbar label { color: #555; }
+    #filename-input {
+      padding: 2px 6px; border: 1px solid #ccc; border-radius: 3px;
+      font-size: 13px; width: 220px;
+    }
+    #save-status { color: #888; font-size: 12px; }
+    #drawio-frame { flex: 1; width: 100vw; border: none; }
+  </style>
+</head>
+<body>
+  <div id="toolbar">
+    <label for="filename-input">Filename:</label>
+    <input id="filename-input" type="text" value="diagram" placeholder="diagram">
+    <span id="save-status"></span>
+  </div>
+  <iframe id="drawio-frame"
+          src="http://localhost:8080/?embed=1&ui=min&spin=1&proto=json">
+  </iframe>
+  <script>
+    const iframe = document.getElementById('drawio-frame');
+    const WS_URL = 'ws://' + location.host;
+    let ws;
+    let drawioReady = false;
+    let pendingXml = null;
+
+    function connectWebSocket() {
+      ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => console.log('[viewer] WebSocket connected');
+
+      ws.onmessage = (e) => {
+        const msg = JSON.parse(e.data);
+        if (msg.action === 'load') {
+          if (drawioReady) {
+            sendXmlToDrawio(msg.xml);
+          } else {
+            pendingXml = msg.xml;
+          }
+        }
+      };
+
+      ws.onclose = () => {
+        console.log('[viewer] WebSocket closed, reconnecting in 2s...');
+        setTimeout(connectWebSocket, 2000);
+      };
+    }
+
+    function sendXmlToDrawio(xml) {
+      iframe.contentWindow.postMessage(JSON.stringify({
+        action: 'load',
+        xml: xml
+      }), '*');
+    }
+
+    window.addEventListener('message', (e) => {
+      if (!e.data || typeof e.data !== 'string' || e.data.length === 0) return;
+
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+
+      if (msg.event === 'init') {
+        drawioReady = true;
+        if (pendingXml) {
+          sendXmlToDrawio(pendingXml);
+          pendingXml = null;
+        }
+      }
+
+      if (msg.event === 'save') {
+        const filename = document.getElementById('filename-input').value.trim() || 'diagram';
+        const statusEl = document.getElementById('save-status');
+        fetch('/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ xml: msg.xml, filename })
+        })
+        .then(r => r.json())
+        .then(res => {
+          console.log('[viewer] Saved:', res.path);
+          statusEl.textContent = `Saved to ${res.path}`;
+          setTimeout(() => statusEl.textContent = '', 3000);
+          iframe.contentWindow.postMessage(JSON.stringify({
+            action: 'status',
+            message: 'Saved!',
+            modified: false
+          }), '*');
+        })
+        .catch(err => console.error('[viewer] Save failed:', err));
+      }
+
+      if (msg.event === 'export') {
+        const filename = document.getElementById('filename-input').value.trim() || 'diagram';
+        fetch('/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ xml: msg.data, filename })
+        })
+        .then(r => r.json())
+        .then(res => console.log('[viewer] Exported:', res.path))
+        .catch(err => console.error('[viewer] Export failed:', err));
+      }
+    });
+
+    connectWebSocket();
+  </script>
+</body>
+</html>
