@@ -97,7 +97,27 @@ You can edit diagrams directly in the browser — drag lines, add boxes, rearran
 
 - **Each AI-generated diagram overwrites the viewer.** If the AI generates a new diagram, it replaces whatever is currently rendered in the browser. If you have unsaved local edits, save them first — nothing is persisted until you click save.
 - **Only one instance per machine.** The HTTP/WebSocket server is hardcoded to port `3000`, so you can only run one copy of the MCP server at a time. The MCP protocol itself uses stdio (one process per Claude session), so if the port were configurable, multiple Claude sessions could each run their own independent instance.
-TODO: Multitab connect to one instance?
+- **Single WebSocket connection.** The server tracks only one active WebSocket (`activeSocket`). If you open a second browser tab, the first tab silently loses its connection with no error or notification. Multi-tab support would require tracking multiple sockets and broadcasting updates to all of them.
+- **`read_diagram` may return stale data.** The tool reads from the `~current.drawio` file on disk rather than querying the live canvas. If autosave hasn't fired since your last edit, the returned XML won't reflect your latest changes.
+- **`draw_diagram` always overwrites the same file.** Every AI-generated diagram clobbers `generated/diagram.drawio`. There's no automatic history or versioning — you must manually save with a different filename to keep prior work.
+- **Hardcoded ports.** Both port `3000` (HTTP/WS) and port `8080` (draw.io Docker) are hardcoded with no environment variable overrides. If either port is already in use, the server crashes.
+- **No input validation on the MCP tool handler.** If `draw_diagram` is called with missing or malformed arguments, the server crashes instead of returning a graceful error.
+- **No graceful shutdown.** The process doesn't handle `SIGINT`/`SIGTERM`, so there's no cleanup of the HTTP server, WebSocket connections, or in-flight state on exit.
+
+## Known Issues / Improvements
+
+- [ ] Make `read_diagram` query the live canvas via WebSocket instead of reading from disk
+- [ ] Add input validation and error handling in the MCP tool handlers
+- [ ] Make ports configurable via environment variables (`PORT`, `DRAWIO_PORT`)
+- [ ] Fix `package.json` (`main` points to `index.js` instead of `server.js`, missing `start` script and description)
+- [ ] Add `docker-compose.yml` for one-command setup
+- [ ] Add a reconnection banner in the viewer when WebSocket disconnects
+- [ ] Handle the `export` event correctly (draw.io may send PNG/SVG data, not XML)
+- [ ] Add `postMessage` target origin instead of `'*'` in `viewer.html`
+- [ ] Add MCP tools for listing/loading/deleting saved diagrams
+- [ ] Use async file I/O instead of `writeFileSync`/`readFileSync`
+- [ ] Add `SIGINT`/`SIGTERM` handlers for graceful shutdown
+- [ ] Add a `LICENSE` file (currently declared as ISC in `package.json` but no file exists)
 
 ## Notes
 
