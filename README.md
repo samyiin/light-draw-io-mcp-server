@@ -18,7 +18,15 @@ It works by connecting Claude to a local Node.js MCP server, which then opens a 
 - Node.js
 - Claude CLI with MCP support
 
-Install dependencies:
+### macOS
+
+```bash
+brew install --cask docker
+open -a Docker
+brew install node
+```
+
+### Install dependencies
 
 ```bash
 cd ~/light-draw-io-mcp-server
